@@ -1,0 +1,14 @@
+pub const WINDOW_WIDTH: f32 = 1280.0;
+pub const WINDOW_HEIGHT: f32 = 720.0;
+pub const ARENA_WIDTH: f32 = 700.0;
+pub const ARENA_HEIGHT: f32 = 500.0;
+pub const PADDLE_SPEED: f32 = 200.0;
+pub const PADDLE_HEIGHT: f32 = 150.0;
+pub const PADDLE_WIDTH: f32 = 10.0;
+pub const PADDLE_HALF_HEIGHT: f32 = PADDLE_HEIGHT / 2.0;
+pub const PADDLE_HALF_WIDTH: f32 = PADDLE_WIDTH / 2.0;
+pub const BALL_SIZE: f32 = 10.0;
+pub const BALL_HALF_SIZE: f32 = BALL_SIZE / 2.0;
+pub const BALL_SPEED: f32 = 100.0;
+pub const BALL_SPEED_MAX: f32 = 500.0;
+pub const BALL_SPEED_INC: f32 = 50.0;
