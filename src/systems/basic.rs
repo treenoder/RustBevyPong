@@ -1,7 +1,7 @@
-use crate::components::{Ball, Paddle};
+use crate::components::{Ball, GameState, Paddle, PaddleSide, ScoreText};
 use crate::consts::*;
+use crate::events::GameEvent;
 use bevy::prelude::*;
-use rand::Rng;
 
 pub fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
@@ -18,7 +18,7 @@ pub fn spawn_players(mut commands: Commands) {
         ..Default::default()
     });
     commands.spawn((SpriteBundle {
-        transform: Transform::from_translation(Vec3::new(-300.0, 0.0, 0.0)),
+        transform: Transform::from_translation(Vec3::new(-ARENA_WIDTH * PADDLE_OFFSET, 0.0, 0.0)),
         sprite: Sprite {
             color: Color::WHITE,
             custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
@@ -31,7 +31,7 @@ pub fn spawn_players(mut commands: Commands) {
         move_down: KeyCode::KeyS,
     }));
     commands.spawn((SpriteBundle {
-        transform: Transform::from_translation(Vec3::new(300.0, 0.0, 0.0)),
+        transform: Transform::from_translation(Vec3::new(ARENA_WIDTH * PADDLE_OFFSET, 0.0, 0.0)),
         sprite: Sprite {
             color: Color::WHITE,
             custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
@@ -59,7 +59,16 @@ pub fn move_puddle(
             direction -= 1.0;
         }
         transform.translation.y += direction * paddle.speed * time.delta_seconds();
-        transform.translation.y = transform.translation.y.clamp(-250.0 + PADDLE_HALF_HEIGHT, 250.0 - PADDLE_HALF_HEIGHT);
+        transform.translation.y = transform.translation.y.clamp(-ARENA_HEIGHT + PADDLE_HALF_HEIGHT, ARENA_HALF_HEIGHT - PADDLE_HALF_HEIGHT);
+    }
+}
+
+pub fn start(
+    input: Res<ButtonInput<KeyCode>>,
+    mut game_state: ResMut<GameState>,
+) {
+    if input.pressed(KeyCode::Space) {
+        game_state.winner = None;
     }
 }
 
@@ -70,12 +79,6 @@ pub fn exit_on_esc(mut app_exit_events: EventWriter<AppExit>, input: Res<ButtonI
 }
 
 pub fn spawn_ball(mut commands: Commands) {
-    let dir_x = if rand::thread_rng().gen_bool(0.5) {
-        1.0
-    } else {
-        -1.0
-    };
-    let dir_y = rand::thread_rng().gen_range(-10..=10) as f32 / 10.0;
     commands.spawn((SpriteBundle {
         transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
         sprite: Sprite {
@@ -84,30 +87,44 @@ pub fn spawn_ball(mut commands: Commands) {
             ..Default::default()
         },
         ..Default::default()
-    }, Ball {
-        direction: Vec2::new(dir_x, dir_y).normalize(),
-        speed: BALL_SPEED,
-    }));
+    }, Ball::default()));
 }
 
-pub fn move_ball(mut balls: Query<(&Ball, &mut Transform)>, time: Res<Time>) {
-    for (ball, mut transform) in balls.iter_mut() {
-        transform.translation += ball.direction.extend(0.0) * ball.speed * time.delta_seconds();
+pub fn move_ball(
+    mut balls: Query<(&mut Ball, &mut Transform)>,
+    game_state: ResMut<GameState>,
+    time: Res<Time>,
+) {
+    let (mut ball, mut transform) = balls.iter_mut().next().expect("No ball found");
+    if ball.is_out {
+        transform.translation = Vec3::ZERO;
+        *ball = Ball::default();
+        return;
     }
+    if game_state.winner.is_some() {
+        return;
+    }
+    transform.translation += ball.direction.extend(0.0) * ball.speed * time.delta_seconds();
 }
 
 pub fn collide_ball(
     mut balls: Query<(&mut Ball, &mut Transform), Without<Paddle>>,
     paddles: Query<(&Paddle, &Transform)>,
+    mut events: EventWriter<GameEvent>,
 ) {
     for (mut ball, mut ball_transform) in balls.iter_mut() {
-        if ball_transform.translation.y > 250.0 - BALL_SIZE / 2.0 {
-            ball_transform.translation.y = 250.0 - BALL_SIZE / 2.0;
+        if ball.is_out {
+            continue;
+        }
+        // reflect walls
+        if ball_transform.translation.y > ARENA_HALF_HEIGHT - BALL_SIZE / 2.0 {
+            ball_transform.translation.y = ARENA_HALF_HEIGHT - BALL_SIZE / 2.0;
             ball.direction.y = -ball.direction.y;
-        } else if ball_transform.translation.y < -250.0 + BALL_SIZE / 2.0 {
-            ball_transform.translation.y = -250.0 + BALL_SIZE / 2.0;
+        } else if ball_transform.translation.y < -ARENA_HALF_HEIGHT + BALL_SIZE / 2.0 {
+            ball_transform.translation.y = -ARENA_HALF_HEIGHT + BALL_SIZE / 2.0;
             ball.direction.y = -ball.direction.y;
         }
+        // reflect paddles
         for (_, paddle_transform) in paddles.iter() {
             let ball_translation = ball_transform.translation;
             let paddle_translation = paddle_transform.translation;
@@ -120,6 +137,36 @@ pub fn collide_ball(
                 ball.speed += BALL_SPEED_INC;
                 ball.speed = ball.speed.min(BALL_SPEED_MAX);
             }
+        }
+        // out of bounds
+        if ball_transform.translation.x > ARENA_HALF_WIDTH + BALL_SIZE / 2.0 {
+            ball.is_out = true;
+            events.send(GameEvent::GainPoint(PaddleSide::Left));
+        } else if ball_transform.translation.x < -ARENA_HALF_WIDTH - BALL_SIZE / 2.0 {
+            ball.is_out = true;
+            events.send(GameEvent::GainPoint(PaddleSide::Right));
+        }
+    }
+}
+
+pub fn score(
+    mut events: EventReader<GameEvent>,
+    mut score_text: Query<(&mut Text, &ScoreText)>,
+    mut game_state: ResMut<GameState>,
+) {
+    for event in events.read() {
+        let GameEvent::GainPoint(side) = event;
+        game_state.winner = Some(*side);
+        match side {
+            PaddleSide::Left => {
+                game_state.left_score += 1;
+            }
+            PaddleSide::Right => {
+                game_state.right_score += 1;
+            }
+        }
+        for (mut text, _) in score_text.iter_mut() {
+            text.sections[0].value = format!("{} | {}", game_state.left_score, game_state.right_score);
         }
     }
 }
