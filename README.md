@@ -48,4 +48,4 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 ## Acknowledgments
 
 - [Bevy Game Engine](https://bevyengine.org/)
-- Rust Programming Language
+- [Rust Programming Language](https://www.rust-lang.org/)
