@@ -39,6 +39,7 @@ RustBevyPong is a simple Pong game created to learn the Bevy game engine using t
 - `Esc`: Exit the game
 - `W`/`S`: Move left paddle up/down
 - `Up Arrow`/`Down Arrow`: Move right paddle up/down
+- `Space`: Start the game
 
 ## License
 
